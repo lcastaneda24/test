@@ -222,64 +222,12 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
     -- ----------      -----------------------------------------      ------------------------------------
     -- 10/10/2018      Luis Carlos Castaneda Oviedo - lcastaneda@asesoftware.com          1. creacion del procedimiento
     PROCEDURE prc_carga_muestra(ip_cod_cia      IN NUMBER
-                              ,ip_arr_cod_secc IN VARCHAR2
-                              ,ip_fec_ini      IN DATE
-                              ,ip_fec_fin      IN DATE
-                              ,ip_opcion       IN NUMBER
-                              ,op_resultado    OUT NUMBER
-                              ,op_arrerrores   OUT sim_typ_array_error) IS
-    
-        CURSOR c_polizas_endoso_exp(p_cod_secc sim_maestro_expuestos_muestra.cod_cia%TYPE
-                                   ,p_fec_ini  DATE
-                                   ,p_fec_fin  DATE) IS
-            SELECT a.fecha_venc_pol
-                  ,a.cod_secc AS cod_ram_emi
-                  ,a.num_secu_pol AS num_secu_pol
-                  ,a.num_pol1 AS num_pol
-                  ,a.cod_cia
-                  ,a.cod_ramo AS cod_prod
-                  ,decode(nvl((SELECT b.num_secu_pol
-                                FROM referidos b
-                               WHERE b.num_secu_pol = a.num_secu_pol)
-                             ,1)
-                         ,1
-                         ,'N'
-                         ,'S') AS mca_ref
-                  ,a.nro_documto AS num_doc_tom
-                  ,a.tdoc_tercero AS tip_doc_tom
-                  ,a.num_end
-                  ,nvl(a.tipo_end, '  ') AS tip_end
-                  ,a.cod_end
-                  ,a.sub_cod_end
-                  ,a.fecha_vig_end AS fec_ini_end
-                  ,nvl(a.fecha_venc_end, add_months(a.fecha_vig_end, 12)) AS fec_fin_end
-                  ,nvl(a.mca_anu_pol, 'N') AS mca_anu_pol
-              FROM a2000030 a
-             WHERE CASE
-                       WHEN a.fecha_venc_pol >= p_fec_ini THEN
-                        1
-                       WHEN a.fecha_venc_pol IS NULL THEN
-                        1
-                       ELSE
-                        0
-                   END = 1
-               AND a.cod_secc = p_cod_secc
-               AND a.cod_cia = ip_cod_cia
-               AND a.num_pol1 IS NOT NULL
-               AND CASE
-                       WHEN a.mca_provisorio IS NULL THEN
-                        'N'
-                       ELSE
-                        a.mca_provisorio
-                   END = 'N'
-               AND a.fecha_vig_pol <= p_fec_fin
-               AND a.fecha_equipo <= p_fec_fin
-               AND a.fecha_vig_end <= CASE
-                       WHEN a.fecha_venc_end IS NULL THEN
-                        add_months(a.fecha_vig_end, 12)
-                       ELSE
-                        a.fecha_venc_end
-                   END;
+                               ,ip_arr_cod_secc IN VARCHAR2
+                               ,ip_fec_ini      IN DATE
+                               ,ip_fec_fin      IN DATE
+                               ,ip_opcion       IN NUMBER
+                               ,op_resultado    OUT NUMBER
+                               ,op_arrerrores   OUT sim_typ_array_error) IS
     
         CURSOR c_riesgo(p_numsecupol  NUMBER
                        ,p_numend      NUMBER
@@ -352,49 +300,130 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
             prc_truncar_tablas_muestra;
         
             -- se recorre el array de secciones
-            v_contador := 1;
             FOR i IN d_secciones.first() .. d_secciones.last()
             LOOP
             
-                -- con cada seccion se usa el cursor para obtener la informacion que se va a grabar en la tabla 'SIM_MAESTRO_EXPUESTOS_MUESTRA'
-                FOR reg IN c_polizas_endoso_exp(d_secciones(i), ip_fec_ini, ip_fec_fin)
-                LOOP
-                
-                    FOR reg2 IN c_riesgo(reg.num_secu_pol, reg.num_end, reg.mca_anu_pol)
-                    LOOP
-                        --dbms_output.put_line(2);
-                        --dbms_output.put_line(reg.num_secu_pol || '+' || lpad(reg2.cod_ries, 5, '0') || '+' || lpad(reg.cod_prod, 4, '0'));
-                        v_registro.llave := reg.num_secu_pol || '+' || lpad(reg2.cod_ries, 5, '0') || '+' || lpad(reg.cod_prod, 4, '0');
-                        --v_registro.ano          := 1;
-                        --v_registro.mes          := 1;
-                        v_registro.num_secu_pol := reg.num_secu_pol;
-                        v_registro.num_end      := reg.num_end;
-                        --v_registro.fec_ini := ;
-                        --v_registro.fec_fin :=;
-                        --v_registro.sem :=;
-                        --v_registro.tri :=;
-                        v_registro.cod_cia     := ip_cod_cia;
-                        v_registro.cod_ram_emi := reg.cod_ram_emi;
-                        v_registro.cod_prod    := reg.cod_prod;
-                        --v_registro.cod_sub_prod :=;
-                        v_registro.num_pol     := reg.num_pol;
-                        v_registro.mca_ref     := reg.mca_ref;
-                        v_registro.num_doc_tom := reg.num_doc_tom;
-                        v_registro.tip_doc_tom := reg.tip_doc_tom;
-                        v_registro.cod_rie     := reg2.cod_ries;
-                        --v_registro.expo :=;
-                        v_registro.mca_anu := reg2.mca_anu;
-                        --v_registro.nom_pro :=;
-                        --v_registro.fec_pro :=;
-                        v_registro.log            := '';
-                        v_registro.numero_muestra := 0;
-                    
-                        prc_escribe_tabla_muestra(v_registro, op_resultado, op_arrerrores);
-                        COMMIT;
-                    
-                    END LOOP;
-                
-                END LOOP;
+                -- inserta en la tabla 'sim_maestro_expuestos_muestra' los datos para la opcion 1
+                IF ip_opcion = 1 THEN
+                    INSERT INTO sim_maestro_expuestos_muestra
+                        SELECT a.num_pol1 || '+' || (SELECT DISTINCT lpad(b.cod_ries, 5, '0')
+                                                       FROM a2000040 b
+                                                      WHERE b.num_secu_pol = a.num_secu_pol
+                                                        AND b.num_end = a.num_end
+                                                        AND b.tipo_reg = 'T') || '+'
+                               
+                               || lpad(a.cod_ramo, 4, '0')
+                              ,NULL -- anio
+                              ,NULL -- mes
+                              ,a.num_secu_pol
+                              ,a.num_end
+                              ,NULL -- fec_ini
+                              ,NULL -- fec_fin
+                              ,NULL -- sem
+                              ,NULL -- tri
+                              ,a.cod_cia
+                              ,a.cod_secc
+                              ,a.cod_ramo
+                              ,NULL -- cod_sub_prod
+                              ,a.num_pol1
+                              ,decode(nvl((SELECT b.num_secu_pol
+                                            FROM referidos b
+                                           WHERE b.num_secu_pol = a.num_secu_pol)
+                                         ,1)
+                                     ,1
+                                     ,'N'
+                                     ,'S')
+                              ,a.nro_documto
+                              ,a.tdoc_tercero
+                              ,NULL -- num_doc_ase
+                              ,NULL -- tip_doc_ase
+                              ,NULL -- cod_ries
+                              ,NULL -- expo
+                              ,CASE
+                                   WHEN a.mca_anu_pol IS NULL THEN
+                                    'N'
+                                   ELSE
+                                    a.mca_anu_pol
+                               END
+                              ,'MAE_EXP_' || lpad(d_secciones(i), 3, '0') || '_' || lpad(ip_opcion, 2, 0) || '_' || to_char(ip_fec_ini, 'YYYYMMDD') || '_' ||
+                               to_char(ip_fec_fin, 'YYYYMMDD') || '_' || to_char(SYSDATE, 'YYYYMMDD') || '_' || to_char(SYSDATE, 'HH:MI')
+                              ,SYSDATE
+                              ,'INSERT MUESTRA'
+                              ,NULL -- numero_muestra
+                          FROM a2000030 a
+                         WHERE CASE
+                                   WHEN a.fecha_venc_pol >= ip_fec_ini THEN
+                                    1
+                                   WHEN a.fecha_venc_pol IS NULL THEN
+                                    1
+                                   ELSE
+                                    0
+                               END = 1
+                           AND a.cod_secc = d_secciones(i)
+                           AND a.cod_cia = ip_cod_cia
+                           AND a.num_pol1 IS NOT NULL
+                           AND CASE
+                                   WHEN a.mca_provisorio IS NULL THEN
+                                    'N'
+                                   ELSE
+                                    a.mca_provisorio
+                               END = 'N'
+                           AND a.fecha_vig_pol <= ip_fec_fin
+                           AND a.fecha_equipo <= ip_fec_fin
+                           AND a.fecha_vig_end <= CASE
+                                   WHEN a.fecha_venc_end IS NULL THEN
+                                    add_months(a.fecha_vig_end, 12)
+                                   ELSE
+                                    a.fecha_venc_end
+                               END;
+                END IF;
+            
+                -- inserta en la tabla 'sim_maestro_expuestos_muestra' los datos para la opcion 2
+                IF ip_opcion = 2 THEN
+                    dbms_output.put_line('');
+                END IF;
+            
+                COMMIT;
+            
+            /*-- con cada seccion se usa el cursor para obtener la informacion que se va a grabar en la tabla 'SIM_MAESTRO_EXPUESTOS_MUESTRA'
+                                                                                                                                                                                                                                                                                        FOR reg IN c_polizas_endoso_exp(d_secciones(i), ip_fec_ini, ip_fec_fin)
+                                                                                                                                                                                                                                                                                        LOOP
+                                                                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                                                                            FOR reg2 IN c_riesgo(reg.num_secu_pol, reg.num_end, reg.mca_anu_pol)
+                                                                                                                                                                                                                                                                                            LOOP
+                                                                                                                                                                                                                                                                                                --dbms_output.put_line(2);
+                                                                                                                                                                                                                                                                                                --dbms_output.put_line(reg.num_secu_pol || '+' || lpad(reg2.cod_ries, 5, '0') || '+' || lpad(reg.cod_prod, 4, '0'));
+                                                                                                                                                                                                                                                                                                v_registro.llave := reg.num_secu_pol || '+' || lpad(reg2.cod_ries, 5, '0') || '+' || lpad(reg.cod_prod, 4, '0');
+                                                                                                                                                                                                                                                                                                --v_registro.ano          := 1;
+                                                                                                                                                                                                                                                                                                --v_registro.mes          := 1;
+                                                                                                                                                                                                                                                                                                v_registro.num_secu_pol := reg.num_secu_pol;
+                                                                                                                                                                                                                                                                                                v_registro.num_end      := reg.num_end;
+                                                                                                                                                                                                                                                                                                --v_registro.fec_ini := ;
+                                                                                                                                                                                                                                                                                                --v_registro.fec_fin :=;
+                                                                                                                                                                                                                                                                                                --v_registro.sem :=;
+                                                                                                                                                                                                                                                                                                --v_registro.tri :=;
+                                                                                                                                                                                                                                                                                                v_registro.cod_cia     := ip_cod_cia;
+                                                                                                                                                                                                                                                                                                v_registro.cod_ram_emi := reg.cod_ram_emi;
+                                                                                                                                                                                                                                                                                                v_registro.cod_prod    := reg.cod_prod;
+                                                                                                                                                                                                                                                                                                --v_registro.cod_sub_prod :=;
+                                                                                                                                                                                                                                                                                                v_registro.num_pol     := reg.num_pol;
+                                                                                                                                                                                                                                                                                                v_registro.mca_ref     := reg.mca_ref;
+                                                                                                                                                                                                                                                                                                v_registro.num_doc_tom := reg.num_doc_tom;
+                                                                                                                                                                                                                                                                                                v_registro.tip_doc_tom := reg.tip_doc_tom;
+                                                                                                                                                                                                                                                                                                v_registro.cod_rie     := reg2.cod_ries;
+                                                                                                                                                                                                                                                                                                --v_registro.expo :=;
+                                                                                                                                                                                                                                                                                                v_registro.mca_anu := reg2.mca_anu;
+                                                                                                                                                                                                                                                                                                --v_registro.nom_pro :=;
+                                                                                                                                                                                                                                                                                                --v_registro.fec_pro :=;
+                                                                                                                                                                                                                                                                                                v_registro.log            := '';
+                                                                                                                                                                                                                                                                                                v_registro.numero_muestra := 0;
+                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                                prc_escribe_tabla_muestra(v_registro, op_resultado, op_arrerrores);
+                                                                                                                                                                                                                                                                                                COMMIT;
+                                                                                                                                                                                                                                                                                            
+                                                                                                                                                                                                                                                                                            END LOOP;
+                                                                                                                                                                                                                                                                                        
+                                                                                                                                                                                                                                                                                        END LOOP;*/
             
             END LOOP;
         
@@ -820,8 +849,8 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                             ,'0'
                                             ,0
                                             ,0);
-                                            --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
-                                    
+                                        --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                
                                 END;
                             
                             ELSE
@@ -859,7 +888,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                                 ,'0'
                                                 ,0
                                                 ,0);
-                                                --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                            --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                                     END;
                                 
                                 END IF;
@@ -914,8 +943,8 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                                 ,'0'
                                                 ,0
                                                 ,0);
-                                                --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
-                                        
+                                            --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                    
                                     END;
                                 
                                 ELSE
@@ -999,7 +1028,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                         ,'0'
                                         ,0
                                         ,0);
-                                        --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                    --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                             END;
                         
                             /* Inicio del endoso es igual a fecha de incio en la tabla */
@@ -1041,7 +1070,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                             ,'0'
                                             ,0
                                             ,0);
-                                            --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                        --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                                 END;
                             
                             ELSE
@@ -1107,7 +1136,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                             ,'0'
                                             ,0
                                             ,0);
-                                            --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                        --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                                 END;
                             
                             END IF;
@@ -1152,7 +1181,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                         ,'0'
                                         ,0
                                         ,0);
-                                        --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                    --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                             END;
                         
                             /* Se modifica la MCA_ANU y la Exposicion y la fecha */
@@ -1208,8 +1237,8 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                         ,'0'
                                         ,0
                                         ,0);
-                                        --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
-                                
+                                    --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                            
                             END;
                         
                         END IF;
@@ -1277,7 +1306,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                     ,'0'
                                     ,0
                                     ,0);
-                                    --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                         END;
                     
                         IF (SQL%ROWCOUNT = 0) /*AND (P_FEC_FIN_END  <= FEC_MAX_LLAVE) */
@@ -1320,7 +1349,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                             ,'0'
                                             ,0
                                             ,0);
-                                            --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                        --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                                 END;
                             
                                 /*Si no actualiza significa que son registros nuevos*/
@@ -1399,7 +1428,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                                 ,'0'
                                                 ,0
                                                 ,0);
-                                                --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                            --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                                     END;
                                 
                                 END IF;
@@ -1616,7 +1645,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                                 ,'0'
                                                 ,0
                                                 ,0);
-                                                --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                            --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                                     END;
                                 
                                     BEGIN
@@ -1642,8 +1671,8 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                                 ,'0'
                                                 ,0
                                                 ,0);
-                                                --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
-                                        
+                                            --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                    
                                     END;
                                 
                                     IF fec_min <= (fec_fin_mes - 1) THEN
@@ -1717,7 +1746,7 @@ CREATE OR REPLACE PACKAGE BODY sim_pck_cb299710 AS
                                                     ,'0'
                                                     ,0
                                                     ,0);
-                                                    --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
+                                                --,p_llave || '+' || p_ano || '+' || p_mes || '+' || fec_min || '+' || fec_max);
                                         END;
                                     
                                     END IF;
